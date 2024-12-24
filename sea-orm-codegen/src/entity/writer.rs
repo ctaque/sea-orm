@@ -6,6 +6,8 @@ use std::{collections::BTreeMap, str::FromStr};
 use syn::{punctuated::Punctuated, token::Comma};
 use tracing::info;
 
+use super::Relation;
+
 #[derive(Clone, Debug)]
 pub struct EntityWriter {
     pub(crate) entities: Vec<Entity>,
@@ -50,6 +52,8 @@ pub struct EntityWriterContext {
     pub(crate) enum_extra_derives: TokenStream,
     pub(crate) enum_extra_attributes: TokenStream,
     pub(crate) seaography: bool,
+    pub(crate) tables: Vec<String>,
+    pub(crate) ignore_tables: Vec<String>,
 }
 
 impl WithSerde {
@@ -148,6 +152,8 @@ impl EntityWriterContext {
         enum_extra_derives: Vec<String>,
         enum_extra_attributes: Vec<String>,
         seaography: bool,
+        tables: Vec<String>,
+        ignore_tables: Vec<String>,
     ) -> Self {
         Self {
             expanded_format,
@@ -163,6 +169,8 @@ impl EntityWriterContext {
             enum_extra_derives: bonus_derive(enum_extra_derives),
             enum_extra_attributes: bonus_attributes(enum_extra_attributes),
             seaography,
+            tables,
+            ignore_tables,
         }
     }
 }
@@ -186,7 +194,36 @@ impl EntityWriter {
 
     pub fn write_entities(&self, context: &EntityWriterContext) -> Vec<OutputFile> {
         self.entities
-            .iter()
+            .clone()
+            .into_iter()
+            .map(|mut n: Entity| {
+                n.relations = n
+                    .relations
+                    .clone()
+                    .into_iter()
+                    .filter(|r: &Relation| {
+                        if context.seaography {
+                            print!("{}", context.tables.contains(&r.ref_table));
+                            context.tables.contains(&r.ref_table)
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
+                n.relations = n
+                    .relations
+                    .clone()
+                    .into_iter()
+                    .filter(|r: &Relation| {
+                        if context.seaography {
+                            !context.ignore_tables.contains(&r.ref_table)
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
+                n
+            })
             .map(|entity| {
                 let entity_file = format!("{}.rs", entity.get_table_name_snake_case());
                 let column_info = entity
@@ -213,7 +250,7 @@ impl EntityWriter {
                 Self::write_doc_comment(&mut lines);
                 let code_blocks = if context.expanded_format {
                     Self::gen_expanded_code_blocks(
-                        entity,
+                        &entity,
                         &context.with_serde,
                         &context.date_time_crate,
                         &context.schema_name,
@@ -225,7 +262,7 @@ impl EntityWriter {
                     )
                 } else {
                     Self::gen_compact_code_blocks(
-                        entity,
+                        &entity,
                         &context.with_serde,
                         &context.date_time_crate,
                         &context.schema_name,

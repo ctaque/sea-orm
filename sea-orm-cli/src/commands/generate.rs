@@ -191,6 +191,8 @@ pub async fn run_generate_command(
                 enum_extra_derives,
                 enum_extra_attributes,
                 seaography,
+                tables,
+                ignore_tables,
             );
             let output = EntityTransformer::transform(table_stmts)?.generate(&writer_context);
 
